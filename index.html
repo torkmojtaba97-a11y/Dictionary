@@ -112,6 +112,32 @@
 
   footer { text-align:center; margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:11px; letter-spacing:1.5px; }
   @media (max-width:520px){ .row{grid-template-columns:70px 1fr auto; padding:14px 16px} .word{font-size:17px} .word.fa{font-size:20px} }
+
+  /* Speed control */
+  .speed-row { display:flex; align-items:center; gap:12px; padding:12px 20px; border-top:1px solid var(--border); background:rgba(159,224,176,0.03); }
+  .speed-label { font-size:10px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; white-space:nowrap; }
+  .speed-val { font-size:12px; color:var(--tl); font-weight:700; min-width:30px; text-align:center; }
+  input[type=range] { flex:1; -webkit-appearance:none; height:4px; border-radius:2px; background:var(--border); outline:none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--tl); cursor:pointer; }
+
+  /* Grammar panel */
+  .grammar-btn { display:flex; align-items:center; gap:8px; width:100%; padding:12px 20px; background:transparent; border:none; border-top:1px solid var(--border); color:var(--accent); cursor:pointer; font-family:monospace; font-size:11px; letter-spacing:2px; text-transform:uppercase; text-align:left; }
+  .grammar-btn:hover { background:rgba(200,169,110,0.05); }
+  .grammar-btn .arrow { transition:transform 0.25s; display:inline-block; }
+  .grammar-btn.open .arrow { transform:rotate(90deg); }
+  .grammar-panel { display:none; padding:16px 20px; border-top:1px solid var(--border); background:rgba(200,169,110,0.03); }
+  .grammar-panel.open { display:block; animation:slideUp 0.25s ease; }
+  .grammar-loading { text-align:center; padding:20px; color:var(--muted); font-size:12px; }
+  .grammar-item { margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid rgba(42,42,53,0.5); }
+  .grammar-item:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .grammar-tag { display:inline-block; padding:2px 10px; border-radius:12px; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-bottom:6px; }
+  .grammar-tag.structure { background:rgba(126,184,201,0.15); color:var(--en); border:1px solid rgba(126,184,201,0.3); }
+  .grammar-tag.vocab { background:rgba(159,224,176,0.15); color:var(--tl); border:1px solid rgba(159,224,176,0.3); }
+  .grammar-tag.tip { background:rgba(200,169,110,0.15); color:var(--accent); border:1px solid rgba(200,169,110,0.3); }
+  .grammar-tag.tagalog { background:rgba(159,224,176,0.15); color:var(--tl); border:1px solid rgba(159,224,176,0.3); }
+  .grammar-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px; }
+  .grammar-desc { font-size:12px; color:#aaa; line-height:1.6; }
+  .grammar-example { margin-top:6px; font-size:12px; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.04); border-left:2px solid var(--accent); color:var(--accent); }
 </style>
 </head>
 <body>
@@ -184,6 +210,21 @@
       <div class="sent-row"><div style="flex:1"><div class="lbl tl">Tagalog</div><div class="sent-text tl" id="sTl">—</div></div>
         <button class="play-btn" id="playSent" onclick="speak(document.getElementById('sTl').textContent,'playSent')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+      <div class="speed-row">
+        <span class="speed-label">🐢 Speed</span>
+        <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="0.85" oninput="updateSpeed(this.value)">
+        <span class="speed-val" id="speedVal">0.85×</span>
+        <span style="font-size:11px;color:var(--muted)">🐇</span>
+      </div>
+      <button class="grammar-btn" id="grammarBtn" onclick="toggleGrammar()">
+        <span class="arrow">▶</span>&nbsp;&nbsp;📚 Grammar & Notes
+      </button>
+      <div class="grammar-panel" id="grammarPanel">
+        <div class="grammar-loading" id="grammarLoading" style="display:none">
+          <div class="spinner"></div>Analyzing...
+        </div>
+        <div id="grammarContent"></div>
+      </div>
     </div>
     <div class="section-title">Example Sentences — click to translate</div>
     <div id="examples"></div>
@@ -198,8 +239,11 @@
 <script>
 let elKey = '';
 let curAudio = null;
-let VOICE_ID = null; // auto-fetched from user's own account (free-tier compatible)
+let VOICE_ID = null;
 let wordLang = 'any', sentLang = 'fa';
+let speechSpeed = 0.85;
+let grammarLoaded = false;
+let grammarOpen = false;
 
 // Language codes for MyMemory
 const MM = { fa:'fa', en:'en', tl:'tl' };
@@ -370,12 +414,108 @@ async function translateSent() {
     document.getElementById('sFa').textContent = results.fa || '—';
     document.getElementById('sEn').textContent = results.en || '—';
     document.getElementById('sTl').textContent = results.tl || '—';
+    // Reset grammar panel for new sentence
+    grammarLoaded = false;
+    grammarOpen = false;
+    document.getElementById('grammarBtn').classList.remove('open');
+    document.getElementById('grammarPanel').classList.remove('open');
+    document.getElementById('grammarContent').innerHTML = '';
     document.getElementById('sentLoad').classList.remove('show');
     document.getElementById('sentCard').classList.add('show');
   } catch(e) {
     document.getElementById('sentLoad').classList.remove('show');
     showErr('sentErr', 'Translation failed: ' + e.message);
   }
+}
+
+// ─── Speed control ───
+function updateSpeed(v) {
+  speechSpeed = parseFloat(v);
+  document.getElementById('speedVal').textContent = speechSpeed.toFixed(2) + '×';
+}
+
+// ─── Grammar toggle & analysis ───
+function toggleGrammar() {
+  const btn = document.getElementById('grammarBtn');
+  const panel = document.getElementById('grammarPanel');
+  grammarOpen = !grammarOpen;
+  btn.classList.toggle('open', grammarOpen);
+  panel.classList.toggle('open', grammarOpen);
+  if (grammarOpen && !grammarLoaded) analyzeGrammar();
+}
+
+async function analyzeGrammar() {
+  const tl = document.getElementById('sTl').textContent;
+  const en = document.getElementById('sEn').textContent;
+  if (!tl || tl === '—') return;
+
+  grammarLoaded = false;
+  document.getElementById('grammarLoading').style.display = 'block';
+  document.getElementById('grammarContent').innerHTML = '';
+
+  const prompt = `You are a Tagalog language teacher. Analyze this sentence and give educational grammar notes.
+
+Tagalog: "${tl}"
+English: "${en}"
+
+Respond ONLY with valid JSON array (no markdown):
+[
+  {
+    "type": "structure",
+    "title": "Sentence Structure",
+    "desc": "Brief explanation of the sentence structure",
+    "example": "highlight key part here"
+  },
+  {
+    "type": "vocab",
+    "title": "Key Word: [word]",
+    "desc": "What this word means and how it's used",
+    "example": "example usage"
+  },
+  {
+    "type": "tagalog",
+    "title": "Tagalog Grammar Point",
+    "desc": "Specific Tagalog grammar rule demonstrated",
+    "example": "another example with same pattern"
+  },
+  {
+    "type": "tip",
+    "title": "Learning Tip",
+    "desc": "Practical tip for remembering or using this",
+    "example": "memory trick or related phrase"
+  }
+]
+Keep each desc under 2 sentences. Make it educational and practical for a Persian speaker learning Tagalog.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content.map(c => c.text || '').join('');
+    const m = text.match(/\[[\s\S]*\]/);
+    if (!m) throw new Error('No JSON');
+    const items = JSON.parse(m[0]);
+
+    document.getElementById('grammarContent').innerHTML = items.map(item => `
+      <div class="grammar-item">
+        <span class="grammar-tag ${item.type}">${item.type}</span>
+        <div class="grammar-title">${item.title}</div>
+        <div class="grammar-desc">${item.desc}</div>
+        ${item.example ? `<div class="grammar-example">${item.example}</div>` : ''}
+      </div>
+    `).join('');
+    grammarLoaded = true;
+  } catch(e) {
+    document.getElementById('grammarContent').innerHTML = `<div style="color:var(--err);font-size:12px;">Could not load grammar notes. Try again.</div>`;
+  }
+  document.getElementById('grammarLoading').style.display = 'none';
 }
 
 // ─── ElevenLabs Speech ───
@@ -400,7 +540,7 @@ async function speak(text, btnId) {
     const voices = synth.getVoices ? synth.getVoices() : [];
     const pick = voices.find(v=>v.lang.startsWith('fil')||v.lang==='en-PH') || voices.find(v=>v.lang.startsWith('es'));
     if (pick) { u.voice=pick; u.lang=pick.lang; } else u.lang='fil-PH';
-    u.rate = 0.85;
+    u.rate = speechSpeed;
     if (btn) { btn.classList.add('playing'); btn.innerHTML = pauseSvg(); }
     u.onend = u.onerror = () => { if(btn){btn.classList.remove('playing');btn.innerHTML=playSvg();} };
     synth.speak(u);
@@ -416,7 +556,7 @@ async function speak(text, btnId) {
       text,
       model_id:'eleven_flash_v2_5',
       language_code:'fil',
-      voice_settings:{ stability:0.85, similarity_boost:0.85, speed:0.85, use_speaker_boost:true }
+      voice_settings:{ stability:0.85, similarity_boost:0.85, speed: speechSpeed, use_speaker_boost:true }
     });
     const apiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
     const res = await fetch(apiUrl, {
