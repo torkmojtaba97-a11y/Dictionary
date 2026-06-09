@@ -281,18 +281,32 @@ async function fetchVoice(){
     const d=await r.json();
     const vs=d.voices||[];
     if(!vs.length) return;
-    const fil=vs.find(v=>JSON.stringify(v.labels||'').toLowerCase().includes('filipino')||(v.name||'').toLowerCase().includes('filipino'));
-    const pre=vs.find(v=>v.category==='premade');
-    voiceId=(fil||pre||vs[0]).voice_id;
+    window._allVoices=vs;
+    let saved=null;
+    try{saved=localStorage.getItem('elvid')}catch(e){}
+    const found=saved?vs.find(v=>v.voice_id===saved):null;
+    if(found) voiceId=found.voice_id;
+    else{
+      const pre=vs.find(v=>v.category==='premade');
+      voiceId=(pre||vs[0]).voice_id;
+    }
+    renderBanner(true);
   }catch(e){}
+}
+function pickVoice(id){
+  voiceId=id;
+  try{localStorage.setItem('elvid',id)}catch(e){}
 }
 function renderBanner(on){
   const b=document.getElementById('vb');
   if(on){
     b.classList.add('on');
-    b.innerHTML=`<span class="vlbl">🔊 Voice</span><span class="vstatus">✓ ElevenLabs connected</span>
-    <button class="vbtn tl" onclick="testVoice()">🔊 Test</button>
-    <button class="vbtn dim" style="margin-left:auto" onclick="clearKey()">Change</button>
+    const vs=window._allVoices||[];
+    const opts=vs.map(v=>`<option value="${v.voice_id}"${v.voice_id===voiceId?' selected':''}>${v.name} (${v.category||''})</option>`).join('');
+    b.innerHTML=`<span class="vlbl" style="width:100%;display:block;margin-bottom:6px">🔊 ElevenLabs connected</span>
+    <select onchange="pickVoice(this.value)" style="flex:1;min-width:140px;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 10px;color:var(--text);font-family:inherit;font-size:11px;outline:none">${opts}</select>
+    <button class="vbtn tl" onclick="testVoice()">Test</button>
+    <button class="vbtn dim" onclick="clearKey()">Change key</button>
     <div class="err" id="verr" style="width:100%;margin-top:6px"></div>`;
   }
 }
