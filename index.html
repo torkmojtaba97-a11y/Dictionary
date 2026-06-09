@@ -381,38 +381,121 @@ async function loadGrammar(){
   if(!tl||tl==='—') return;
   document.getElementById('gldr').style.display='block';
   document.getElementById('gc').innerHTML='';
-  const prompt=`You are a Tagalog language teacher. Analyze this sentence educationally.
-Tagalog: "${tl}"
-English: "${en}"
-Respond ONLY with a valid JSON array, no markdown:
-[{"type":"structure","title":"Sentence Structure","desc":"...","example":"..."},
-{"type":"vocab","title":"Key Word: [word]","desc":"...","example":"..."},
-{"type":"tagalog","title":"Tagalog Grammar Point","desc":"...","example":"..."},
-{"type":"tip","title":"Learning Tip","desc":"...","example":"..."}]
-Keep each desc under 2 sentences. Make it practical for a Persian speaker learning Tagalog.`;
-  try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:900,messages:[{role:'user',content:prompt}]})
-    });
-    const d=await r.json();
-    const txt=d.content.map(c=>c.text||'').join('');
-    const m=txt.match(/\[[\s\S]*\]/);
-    if(!m) throw new Error('no json');
-    const items=JSON.parse(m[0]);
-    document.getElementById('gc').innerHTML=items.map(x=>`
-      <div class="gitem">
-        <span class="gtag ${x.type}">${x.type}</span>
-        <div class="gtitle">${x.title}</div>
-        <div class="gdesc">${x.desc}</div>
-        ${x.example?`<div class="gex">${x.example}</div>`:''}
-      </div>`).join('');
-    gLoaded=true;
-  }catch(e){
-    document.getElementById('gc').innerHTML=`<div style="color:var(--err);font-size:11px">Could not load. Try again.</div>`;
-  }
+
+  // Local Tagalog grammar engine — no API needed
+  const items=analyzeTagalog(tl,en);
+  document.getElementById('gc').innerHTML=items.map(x=>`
+    <div class="gitem">
+      <span class="gtag ${x.type}">${x.type}</span>
+      <div class="gtitle">${x.title}</div>
+      <div class="gdesc">${x.desc}</div>
+      ${x.example?`<div class="gex">${x.example}</div>`:''}
+    </div>`).join('');
+  gLoaded=true;
   document.getElementById('gldr').style.display='none';
+}
+
+function analyzeTagalog(tl,en){
+  const words=tl.toLowerCase().replace(/[.,!?]/g,'').split(/\s+/);
+  const items=[];
+
+  // ── Structure detection ──
+  const linkers=['na','ng','nang','ay','ang','sa','ni','nina','kay','kina'];
+  const verbs={
+    mag:['magluto','maglakad','magtrabaho','magbasa','magsulat','maglaro','magtulog','magkain'],
+    um:['umalis','uminom','umupo','lumakad','lumayo','pumunta','kumain','dumating'],
+    in:['gawin','bilhin','kunin','lutuin','basahin','sulatin','tanggapin'],
+    an:['bigyan','tulungan','samahan','puntahan','lapitan'],
+  };
+
+  // Detect sentence structure
+  if(words.includes('ay')){
+    const idx=words.indexOf('ay');
+    items.push({type:'structure',title:'Inverted Sentence (Ay construction)',
+      desc:'The word "ay" flips subject and predicate. It\'s like saying "subject — is — predicate". Very common in Tagalog.',
+      example:`"${words.slice(0,idx).join(' ')} ay ${words.slice(idx+1).join(' ')}" = "${en}"`});
+  } else if(words[0]==='ang'||words[0]==='si'||words[0]==='si'){
+    items.push({type:'structure',title:'Verbal Sentence (Verb-first)',
+      desc:'Tagalog sentences often start with the verb. The subject (marked by "ang" or "si") comes after the verb.',
+      example:'Kumain ang bata. = The child ate. / Nagluto si Maria. = Maria cooked.'});
+  } else {
+    items.push({type:'structure',title:'Sentence Structure',
+      desc:`This sentence has ${words.length} words. Tagalog word order is usually Verb-Subject-Object (VSO), different from English Subject-Verb-Object.`,
+      example:'Bumili ang lalaki ng tinapay. = The man bought bread.'});
+  }
+
+  // ── Focus/linker markers ──
+  if(words.includes('ang')){
+    items.push({type:'tagalog',title:'Marker: ANG (subject marker)',
+      desc:'"Ang" marks the subject/topic of the sentence — the thing the verb is focused on. It has no direct English translation.',
+      example:'Kumain ang bata. = The child ate. | Maganda ang bahay. = The house is beautiful.'});
+  } else if(words.includes('ng')){
+    items.push({type:'tagalog',title:'Marker: NG (object/possessive marker)',
+      desc:'"Ng" (pronounced "nang") marks the object of the verb or shows possession. It\'s like "of" or "the" depending on context.',
+      example:'Bumili ng tinapay. = Bought bread. | Bahay ng tatay. = Father\'s house.'});
+  } else if(words.includes('sa')){
+    items.push({type:'tagalog',title:'Marker: SA (location/direction marker)',
+      desc:'"Sa" marks location, direction, or indirect object — like "in", "at", "to", "from" all in one word.',
+      example:'Pumunta sa tindahan. = Went to the store. | Nakatira sa Maynila. = Living in Manila.'});
+  } else if(words.includes('na')){
+    items.push({type:'tagalog',title:'Linker: NA (already / linker)',
+      desc:'"Na" has two uses: as "already" (indicating completed action) or as a linker connecting adjectives to nouns.',
+      example:'Tapos na. = Already done. | Magandang na babae. = A beautiful woman.'});
+  } else {
+    items.push({type:'tagalog',title:'Tagalog Grammar',
+      desc:'Tagalog uses focus markers (ang, ng, sa) to show the role of each noun — unlike English which relies on word order.',
+      example:'Ang = subject | Ng = object | Sa = location/direction'});
+  }
+
+  // ── Key vocabulary ──
+  const greetings={'kamusta':'greeting meaning "how are you?" — from Spanish "¿Cómo está?"',
+    'salamat':'thank you — one of the most useful Tagalog words',
+    'oo':'yes — short and simple','hindi':'no/not — essential negation word',
+    'maganda':'beautiful/good — very common adjective',
+    'mahal':'expensive OR love — context determines meaning!',
+    'bahay':'house/home','tubig':'water','pagkain':'food',
+    'pera':'money — from Spanish "perla"','trabaho':'work/job — from Spanish "trabajo"',
+    'kaibigan':'friend — ka+ibigan (one who shares desire)',
+    'araw':'day or sun','gabi':'night','kumusta':'how are you (informal)',
+    'po':'respectful particle — adds formality to any sentence',
+    'nga':'emphatic particle — emphasizes the previous word',
+  };
+  for(const w of words){
+    if(greetings[w]){
+      items.push({type:'vocab',title:`Key Word: "${w}"`,
+        desc:`"${w}" means ${greetings[w]}.`,
+        example:`Try using "${w}" in your next conversation with a Filipino!`});
+      break;
+    }
+  }
+  if(items.length<3){
+    const keyWord=words.filter(w=>w.length>4&&!linkers.includes(w))[0]||words[0];
+    items.push({type:'vocab',title:`Key Word: "${keyWord}"`,
+      desc:`"${keyWord}" is a content word in this sentence. Learning root words in Tagalog helps you understand many related words through affixes.`,
+      example:`Tagalog uses prefixes/suffixes: mag-, um-, -in, -an to change meaning`});
+  }
+
+  // ── Learning tip ──
+  const tips=[
+    {check:w=>w==='po'||w==='ho',tip:'The particle "po" or "ho" makes any sentence polite/respectful. Always use it with elders or strangers!',ex:'"Salamat po" = Thank you (politely) | "Oo po" = Yes (respectfully)'},
+    {check:w=>w.startsWith('mag'),tip:'"Mag-" prefix creates actor-focus verbs. The person doing the action is the subject.',ex:'"Magluto" = to cook | "Maglaro" = to play | "Magtrabaho" = to work'},
+    {check:w=>w==='hindi',tip:'"Hindi" is the main negation word. Just add it before any verb or adjective to negate.',ex:'"Hindi ako kumain." = I did not eat. | "Hindi maganda." = Not beautiful.'},
+    {check:w=>w==='ako'||w==='ka'||w==='siya',tip:'Tagalog pronouns: ako=I/me, ikaw/ka=you, siya=he/she, kami=we(excl), tayo=we(incl), kayo=you(pl), sila=they',ex:'"Kumain ako." = I ate. | "Kumain siya." = He/She ate.'},
+  ];
+  let tipAdded=false;
+  for(const t of tips){
+    if(words.some(t.check)){
+      items.push({type:'tip',title:'Learning Tip',desc:t.tip,example:t.ex});
+      tipAdded=true;break;
+    }
+  }
+  if(!tipAdded){
+    items.push({type:'tip',title:'Learning Tip',
+      desc:'Tagalog is phonetic — each letter has one sound. Once you learn the sounds, you can read any Tagalog word correctly! Vowels: a, e, i, o, u are pure like Spanish/Persian.',
+      example:'Practice: "Magandang umaga!" = Good morning! | "Salamat!" = Thank you!'});
+  }
+
+  return items.slice(0,4);
 }
 
 // ── Speech ──
