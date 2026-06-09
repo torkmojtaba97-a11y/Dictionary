@@ -71,8 +71,10 @@ body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospac
 .sbtn{background:var(--acc);color:#0d0d0f;border:none;border-radius:10px;padding:13px 20px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap}
 
 /* result card */
-.rcard{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:18px;display:none}
+.rcard{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:visible;margin-bottom:18px;display:none}
 .rcard.on{display:block;animation:up .25s ease}
+.rcard .chead{border-radius:14px 14px 0 0}
+.gpanel.open:last-child{border-radius:0 0 14px 14px}
 @keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .chead{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
 .chead span{font-size:9px;color:var(--mut);letter-spacing:2px;text-transform:uppercase}
@@ -355,8 +357,10 @@ async function doSent(){
   if(!t) return;
   show('sldr',true);show('serr',false);show('scard',false,'on');
   gLoaded=false;gOpen=false;
-  document.getElementById('gbtn').classList.remove('open');
-  document.getElementById('gp').classList.remove('open');
+  const gbtn=document.getElementById('gbtn');
+  const gp=document.getElementById('gp');
+  if(gbtn) gbtn.classList.remove('open');
+  if(gp) gp.classList.remove('open');
   document.getElementById('gc').innerHTML='';
   try{
     const res={};res[sLang]=t;
@@ -378,11 +382,10 @@ function toggleG(){
 async function loadGrammar(){
   const tl=document.getElementById('stl').textContent;
   const en=document.getElementById('sen').textContent;
-  if(!tl||tl==='—') return;
-  document.getElementById('gldr').style.display='block';
-  document.getElementById('gc').innerHTML='';
-
-  // Local Tagalog grammar engine — no API needed
+  if(!tl||tl==='—'){
+    document.getElementById('gc').innerHTML='<div style="color:var(--mut);font-size:11px">Translate a sentence first.</div>';
+    return;
+  }
   const items=analyzeTagalog(tl,en);
   document.getElementById('gc').innerHTML=items.map(x=>`
     <div class="gitem">
@@ -392,7 +395,6 @@ async function loadGrammar(){
       ${x.example?`<div class="gex">${x.example}</div>`:''}
     </div>`).join('');
   gLoaded=true;
-  document.getElementById('gldr').style.display='none';
 }
 
 function analyzeTagalog(tl,en){
@@ -529,7 +531,7 @@ async function speak(text,btnId){
       method:'POST',
       headers:{'xi-api-key':elKey,'Content-Type':'application/json','Accept':'audio/mpeg'},
       body:JSON.stringify({text,model_id:'eleven_flash_v2_5',language_code:'fil',
-        voice_settings:{stability:.85,similarity_boost:.85,speed:spd,use_speaker_boost:true}})
+        voice_settings:{stability:.85,similarity_boost:.85,use_speaker_boost:true}})
     });
     if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(`${r.status}: ${e?.detail?.message||e?.detail||'error'}`)}
     const blob=await r.blob();
